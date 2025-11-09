@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Single-page dashboard that visualizes how funds enter and leave the team -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance Flow Tracker</title>
+    <!-- D3 draws the diagrams and the Sankey plugin turns entries into a flow chart -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js"></script>
+    <!-- Inline stylesheet keeps everything in one file for easier sharing -->
+    <style>
+        /* Reset margins/padding so every browser renders the layout the same */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Purple gradient background plus friendly system fonts */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(180deg, #4739a6 0%, #d483f8 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* White card that holds everything in the center of the page */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        /* Gradient title bar with the project name */
+        header {
+            background: linear-gradient(180deg, #4739a6 0%, #d483f8 100%);
+            color: white;
+            padding: 30px 40px;
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+
+        /* Toolbar that houses the main action buttons and filters */
+        .controls {
+            padding: 30px 40px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        /* Base style for every button */
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #7E5FCF;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #A265DA;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #333;
+            border: 2px solid #e0e0e0;
+        }
+
+        .btn-secondary:hover {
+            border-color: #A265DA;
+            color: #A265DA;
+        }
+
+        .btn-secondary.active {
+            background: #7E5FCF;
+            color: white;
+            border-color: #7E5FCF;
+        }
+
+        /* Right-aligned set of time-range filters */
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        /* Padding around the dashboard content */
+        .main-content {
+            padding: 40px;
+        }
+
+        /* Container for the flow diagram */
+        .sankey-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            min-height: 500px;
+        }
+
+        #sankey {
+            width: 100%;
+            height: 500px;
+        }
+
+        /* Collapsible table of every entry */
+        .entries-section {
+            margin-top: 40px;
+        }
+
+        .section-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        /* Table shell for the history list */
+        .entries-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .entries-table th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .entries-table td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .entries-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* Groups edit/delete buttons nicely */
+        .entry-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-edit {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-edit:hover {
+            background: #45a049;
+        }
+
+        .btn-delete {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-delete:hover {
+            background: #da190b;
+        }
+
+        /* Dark overlay that appears when adding/editing an entry */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        /* White card inside the overlay */
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 25px;
+            color: #333;
+        }
+
+        /* Stack label/input pairs with spacing */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        /* Give all fields the same rounded look */
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        /* Buttons at the bottom of the modal */
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .form-actions button {
+            flex: 1;
+        }
+
+        /* Friendly message whenever there is no data to show */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        /* Three quick stat cards (income/expense/balance) */
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .summary-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .summary-card-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .summary-card-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .summary-card.income .summary-card-value {
+            color: #4CAF50;
+        }
+
+        .summary-card.expense .summary-card-value {
+            color: #f44336;
+        }
+
+        .summary-card.balance .summary-card-value {
+            color: #A265DA;
+        }
+
+        /* Tiny pill used to color-code the type column */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Green badge for money coming in */
+        .badge-income {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        /* Red badge for money going out */
+        .badge-expense {
+            background: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <!-- Card-style shell that keeps the finance tools centered on the page -->
+    <div class="container">
+        <!-- Simple hero header so people instantly know what this page does -->
+        <header>
+            <h1>Orion Racing Finance Tracker</h1>
+        </header>
+
+        <!-- Action bar with add button, table toggle, and time filters -->
+        <div class="controls">
+            <button class="btn-primary" onclick="openAddModal()">Add Entry</button>
+            <button class="btn-secondary" onclick="toggleEntriesView()">View All Entries</button>
+            
+            <div class="filter-group">
+                <!-- Each filter button updates the timeframe used everywhere else -->
+                <button class="btn-secondary active" onclick="setFilter('month')">This Month</button>
+                <button class="btn-secondary" onclick="setFilter('3months')">Last 3 Months</button>
+                <button class="btn-secondary" onclick="setFilter('6months')">Last 6 Months</button>
+                <button class="btn-secondary" onclick="setFilter('year')">Year to Date</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Quick stats so someone can see the big picture at a glance -->
+            <div class="summary-cards">
+                <div class="summary-card income">
+                    <div class="summary-card-title">Total Income</div>
+                    <div class="summary-card-value" id="totalIncome">$0</div>
+                </div>
+                <div class="summary-card expense">
+                    <div class="summary-card-title">Total Expenses</div>
+                    <div class="summary-card-value" id="totalExpense">$0</div>
+                </div>
+                <div class="summary-card balance">
+                    <div class="summary-card-title">Net Balance</div>
+                    <div class="summary-card-value" id="netBalance">$0</div>
+                </div>
+            </div>
+
+            <!-- Placeholder for the Sankey diagram (money flow visualization) -->
+            <div class="sankey-container">
+                <div id="sankey"></div>
+            </div>
+
+            <!-- Hidden by default; reveals a sortable table of every entry -->
+            <div class="entries-section" id="entriesSection" style="display: none;">
+                <h2 class="section-title">All Entries</h2>
+                <div id="entriesTableContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reusable modal for adding OR editing entries -->
+    <div class="modal" id="entryModal">
+        <div class="modal-content">
+            <h2 class="modal-title" id="modalTitle">Add Entry</h2>
+            <form id="entryForm" onsubmit="saveEntry(event)">
+                <input type="hidden" id="entryId">
+                
+                <!-- Required basics so we know what kind of money movement this is -->
+                <div class="form-group">
+                    <label>Type *</label>
+                    <select id="entryType" required>
+                        <option value="income">Income</option>
+                        <option value="expense">Expense</option>
+                    </select>
+                </div>
+
+                <!-- Free text buckets so teams can name their own categories -->
+                <div class="form-group">
+                    <label>Category *</label>
+                    <input type="text" id="entryCategory" required placeholder="e.g., Salary, Rent, Food">
+                </div>
+
+                <!-- Optional extra level if teams want to split categories even more -->
+                <div class="form-group">
+                    <label>Subcategory</label>
+                    <input type="text" id="entrySubcategory" placeholder="Optional">
+                </div>
+
+                <!-- Amount and timing help the summaries stay accurate -->
+                <div class="form-group">
+                    <label>Amount ($) *</label>
+                    <input type="number" id="entryAmount" step="0.01" required placeholder="0.00">
+                </div>
+
+                <div class="form-group">
+                    <label>Date *</label>
+                    <input type="date" id="entryDate" required>
+                </div>
+
+                <!-- Optional description if the amount needs extra context later -->
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="entryNotes" placeholder="Optional notes"></textarea>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // In-memory list of every income/expense item (also synced to localStorage)
+        let entries = [];
+        // Determines which time range drives the stats and Sankey chart
+        let currentFilter = 'month';
+        // When editing an existing row we keep its id here
+        let editingId = null;
+
+        // Initialize the app once the HTML nodes exist
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('App loaded!');
+            loadEntries();
+            console.log('Entries loaded:', entries.length);
+            document.getElementById('entryDate').valueAsDate = new Date();
+            updateDashboard();
+        });
+
+        // Pull saved data out of the browser's localStorage (if available)
+        function loadEntries() {
+            const stored = localStorage.getItem('financeEntries');
+            if (stored) {
+                entries = JSON.parse(stored);
+            }
+        }
+
+        // Persist the latest entries list so refreshing the page keeps your data
+        function saveEntries() {
+            localStorage.setItem('financeEntries', JSON.stringify(entries));
+        }
+
+        // Show a blank form so the user can add a new record
+        function openAddModal() {
+            editingId = null;
+            document.getElementById('modalTitle').textContent = 'Add Entry';
+            document.getElementById('entryForm').reset();
+            document.getElementById('entryDate').valueAsDate = new Date();
+            document.getElementById('entryModal').classList.add('active');
+        }
+
+        // Load the existing values into the modal so they can be tweaked
+        function openEditModal(id) {
+            editingId = id;
+            const entry = entries.find(e => e.id === id);
+            if (!entry) return;
+
+            document.getElementById('modalTitle').textContent = 'Edit Entry';
+            document.getElementById('entryType').value = entry.type;
+            document.getElementById('entryCategory').value = entry.category;
+            document.getElementById('entrySubcategory').value = entry.subcategory || '';
+            document.getElementById('entryAmount').value = entry.amount;
+            document.getElementById('entryDate').value = entry.date;
+            document.getElementById('entryNotes').value = entry.notes || '';
+            document.getElementById('entryModal').classList.add('active');
+        }
+
+        // Hides the modal and clears any stale data
+        function closeModal() {
+            document.getElementById('entryModal').classList.remove('active');
+            document.getElementById('entryForm').reset();
+            editingId = null;
+        }
+
+        // Handles both the add and edit flows depending on editingId
+        function saveEntry(event) {
+            event.preventDefault();
+
+            // Grab whatever the user typed into the form fields
+            const entry = {
+                id: editingId || Date.now().toString(),
+                type: document.getElementById('entryType').value,
+                category: document.getElementById('entryCategory').value,
+                subcategory: document.getElementById('entrySubcategory').value,
+                amount: parseFloat(document.getElementById('entryAmount').value),
+                date: document.getElementById('entryDate').value,
+                notes: document.getElementById('entryNotes').value
+            };
+
+            if (editingId) {
+                // Replace the existing entry in place
+                const index = entries.findIndex(e => e.id === editingId);
+                entries[index] = entry;
+            } else {
+                // Otherwise append a fresh entry to the list
+                entries.push(entry);
+            }
+
+            saveEntries();
+            closeModal();
+            updateDashboard();
+        }
+
+        // Simple confirmation before removing a row forever
+        function deleteEntry(id) {
+            if (!confirm('Are you sure you want to delete this entry?')) return;
+            entries = entries.filter(e => e.id !== id);
+            saveEntries();
+            updateDashboard();
+        }
+
+        // Update the active time window buttons and refresh the data
+        function setFilter(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-group button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            // The browser gives us the click event, so we can light up the button that was tapped
+            event.target.classList.add('active');
+            updateDashboard();
+        }
+
+        // Returns entries that fall inside the currently selected time range
+        function getFilteredEntries() {
+            const today = new Date();
+            const startDates = {
+                'month': new Date(today.getFullYear(), today.getMonth(), 1),
+                '3months': new Date(today.getFullYear(), today.getMonth() - 3, today.getDate()),
+                '6months': new Date(today.getFullYear(), today.getMonth() - 6, today.getDate()),
+                'year': new Date(today.getFullYear(), 0, 1)
+            };
+
+            const startDate = startDates[currentFilter];
+            return entries.filter(e => new Date(e.date) >= startDate);
+        }
+
+        // Recalculates every widget (stats, chart, table) in one go
+        function updateDashboard() {
+            const filtered = getFilteredEntries();
+            updateSummary(filtered);
+            updateSankey(filtered);
+            if (document.getElementById('entriesSection').style.display !== 'none') {
+                updateEntriesTable();
+            }
+        }
+
+        // Totals for the three KPI cards at the top
+        function updateSummary(filtered) {
+            const income = filtered.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
+            const expense = filtered.filter(e => e.type === 'expense').reduce((sum, e) => sum + e.amount, 0);
+            const balance = income - expense;
+
+            document.getElementById('totalIncome').textContent = '$' + income.toFixed(2);
+            document.getElementById('totalExpense').textContent = '$' + expense.toFixed(2);
+            document.getElementById('netBalance').textContent = '$' + balance.toFixed(2);
+        }
+
+        // Builds the money flow diagram using D3's Sankey layout
+        function updateSankey(filtered) {
+            const container = document.getElementById('sankey');
+            container.innerHTML = '';
+
+            if (filtered.length === 0) {
+                // Don't try to draw a chart with no data; show a nudge instead
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <h3>No data yet</h3>
+                        <p>Add your first entry to see the money flow visualization</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Prepare data for Sankey: nodes are buckets, links describe how money moves between them
+            const nodes = [];
+            const links = [];
+            const nodeMap = new Map();
+
+            // Returns an index for each unique name; creates nodes on the fly
+            function getNodeIndex(name) {
+                if (!nodeMap.has(name)) {
+                    nodeMap.set(name, nodes.length);
+                    nodes.push({ name });
+                }
+                return nodeMap.get(name);
+            }
+
+            // Add Income aggregate node
+            const incomeIdx = getNodeIndex('Income');
+
+            // Process income entries
+            const incomeByCategory = {}; // Totals for category nodes
+            const incomeSubcategories = {}; // Totals for the optional subcategory nodes
+            filtered.filter(e => e.type === 'income').forEach(e => {
+                const category = (e.category && e.category.trim()) || 'Other Income';
+                incomeByCategory[category] = (incomeByCategory[category] || 0) + e.amount;
+
+                const subcategory = (e.subcategory || '').trim();
+                if (subcategory) {
+                    if (!incomeSubcategories[category]) {
+                        incomeSubcategories[category] = {};
+                    }
+                    incomeSubcategories[category][subcategory] = (incomeSubcategories[category][subcategory] || 0) + e.amount;
+                }
+            });
+
+            Object.entries(incomeByCategory).forEach(([category, amount]) => {
+                const catIdx = getNodeIndex(category);
+                links.push({ source: catIdx, target: incomeIdx, value: amount });
+            });
+
+            Object.entries(incomeSubcategories).forEach(([category, subcategories]) => {
+                const catIdx = getNodeIndex(category);
+                Object.entries(subcategories).forEach(([subcategory, amount]) => {
+                    const subNodeName = `${subcategory}`;
+                    const subIdx = getNodeIndex(subNodeName);
+                    links.push({ source: subIdx, target: catIdx, value: amount });
+                });
+            });
+
+            // Process expense entries
+            const expenseByCategory = {}; // Totals for money leaving each category
+            const expenseSubcategories = {}; // More granular breakdowns when provided
+            filtered.filter(e => e.type === 'expense').forEach(e => {
+                const sourceCategory = (e.category && e.category.trim()) || 'Other Expenses';
+                expenseByCategory[sourceCategory] = (expenseByCategory[sourceCategory] || 0) + e.amount;
+
+                const subcategory = (e.subcategory || '').trim();
+                if (subcategory) {
+                    if (!expenseSubcategories[sourceCategory]) {
+                        expenseSubcategories[sourceCategory] = {};
+                    }
+                    expenseSubcategories[sourceCategory][subcategory] = (expenseSubcategories[sourceCategory][subcategory] || 0) + e.amount;
+                }
+            });
+
+            // Link Income aggregate to each expense category
+            Object.entries(expenseByCategory).forEach(([category, amount]) => {
+                if (amount <= 0) return;
+                const catIdx = getNodeIndex(category);
+                links.push({ source: incomeIdx, target: catIdx, value: amount });
+            });
+
+            Object.entries(expenseSubcategories).forEach(([category, subcategories]) => {
+                const catIdx = getNodeIndex(category);
+                Object.entries(subcategories).forEach(([subcategory, amount]) => {
+                    const subNodeName = `${subcategory}`;
+                    const subIdx = getNodeIndex(subNodeName);
+                    links.push({ source: catIdx, target: subIdx, value: amount });
+                });
+            });
+
+            // Create Sankey diagram
+            const width = container.clientWidth;
+            const height = 500;
+
+            const svg = d3.select('#sankey')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            const sankey = d3.sankey()
+                .nodeWidth(15)
+                .nodePadding(10)
+                .extent([[1, 1], [width - 1, height - 5]]);
+
+            const { nodes: sankeyNodes, links: sankeyLinks } = sankey({
+                nodes: nodes.map(d => Object.assign({}, d)),
+                links: links.map(d => Object.assign({}, d))
+            });
+
+            // Color palette for categories
+            const categoryColors = {
+                'Income': '#4CAF50',
+                'Salary': '#66BB6A',
+                'Freelance': '#81C784',
+                'Investment': '#A5D6A7',
+                'Other Income': '#C8E6C9',
+                
+                // Expense categories - using your Orion Racing palette
+                'Other Expenses': '#8B5CF6',
+                'Rent': '#7E5FCF',
+                'Food': '#4739A6',
+                'Groceries': '#5758C5',
+                'Transportation': '#8665DD',
+                'Entertainment': '#A265DA',
+                'Utilities': '#CC95FF',
+                'Shopping': '#47009c',
+                'Healthcare': '#6300b9',
+                'Education': '#7f00d6',
+                'Travel': '#9c2af0',
+                'Insurance': '#b666f9',
+                'Subscriptions': '#004AAD',
+                'Dining Out': '#5758C5',
+                'Fitness': '#8665DD',
+                'Gifts': '#A265DA'
+            };
+
+            // Assign colors to nodes
+            const nodeColors = new Map();
+            sankeyNodes.forEach((node, i) => {
+                if (categoryColors[node.name]) {
+                    nodeColors.set(node.name, categoryColors[node.name]);
+                } else {
+                    // Generate color from palette for unknown categories
+                    const palette = ['#7E5FCF', '#4739A6', '#5758C5', '#8665DD', '#A265DA', '#CC95FF', '#47009c', '#6300b9', '#7f00d6', '#9c2af0', '#b666f9'];
+                    nodeColors.set(node.name, palette[i % palette.length]);
+                }
+            });
+
+            // Add links with gradient colors
+            const defs = svg.append('defs');
+            
+            sankeyLinks.forEach((link, i) => {
+                const gradientId = `gradient-${i}`;
+                const gradient = defs.append('linearGradient')
+                    .attr('id', gradientId)
+                    .attr('gradientUnits', 'userSpaceOnUse')
+                    .attr('x1', link.source.x1)
+                    .attr('x2', link.target.x0);
+                
+                gradient.append('stop')
+                    .attr('offset', '0%')
+                    .attr('stop-color', nodeColors.get(link.source.name) || '#667eea');
+                
+                gradient.append('stop')
+                    .attr('offset', '100%')
+                    .attr('stop-color', nodeColors.get(link.target.name) || '#667eea');
+            });
+
+            // Add links
+            svg.append('g')
+                .selectAll('path')
+                .data(sankeyLinks)
+                .join('path')
+                .attr('d', d3.sankeyLinkHorizontal())
+                .attr('stroke', (d, i) => `url(#gradient-${i})`)
+                .attr('stroke-width', d => Math.max(1, d.width))
+                .attr('fill', 'none')
+                .attr('opacity', 0.6);
+
+            // Add nodes
+            svg.append('g')
+                .selectAll('rect')
+                .data(sankeyNodes)
+                .join('rect')
+                .attr('x', d => d.x0)
+                .attr('y', d => d.y0)
+                .attr('height', d => d.y1 - d.y0)
+                .attr('width', d => d.x1 - d.x0)
+                .attr('fill', d => nodeColors.get(d.name) || '#667eea')
+                .attr('opacity', 0.9)
+                .attr('stroke', '#fff')
+                .attr('stroke-width', 1);
+
+            // Add labels
+            svg.append('g')
+                .selectAll('text')
+                .data(sankeyNodes)
+                .join('text')
+                .attr('x', d => d.x0 < width / 2 ? d.x1 + 6 : d.x0 - 6)
+                .attr('y', d => (d.y1 + d.y0) / 2)
+                .attr('dy', '0.35em')
+                .attr('text-anchor', d => d.x0 < width / 2 ? 'start' : 'end')
+                .text(d => `${d.name} ($${d.value.toFixed(0)})`)
+                .style('font-size', '12px')
+                .style('font-weight', '600');
+        }
+
+        // Show/hide the history table without leaving the page
+        function toggleEntriesView() {
+            const section = document.getElementById('entriesSection');
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                updateEntriesTable();
+            } else {
+                section.style.display = 'none';
+            }
+        }
+
+        // Builds the HTML table by hand so it matches the current entries array
+        function updateEntriesTable() {
+            const container = document.getElementById('entriesTableContainer');
+            
+            if (entries.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <h3>No entries yet</h3>
+                        <p>Click "Add Entry" to get started</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const sorted = [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // Template literal keeps the markup readable even though we're in JS
+            const table = `
+                <table class="entries-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Subcategory</th>
+                            <th>Amount</th>
+                            <th>Notes</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sorted.map(entry => `
+                            <tr>
+                                <td>${new Date(entry.date).toLocaleDateString()}</td>
+                                <td><span class="badge badge-${entry.type}">${entry.type}</span></td>
+                                <td>${entry.category}</td>
+                                <td>${entry.subcategory || '-'}</td>
+                                <td>$${entry.amount.toFixed(2)}</td>
+                                <td>${entry.notes || '-'}</td>
+                                <td>
+                                    <div class="entry-actions">
+                                        <button class="btn-small btn-edit" onclick="openEditModal('${entry.id}')">Edit</button>
+                                        <button class="btn-small btn-delete" onclick="deleteEntry('${entry.id}')">Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = table;
+        }
+    </script>
+</body>
+</html>
