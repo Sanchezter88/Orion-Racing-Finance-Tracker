@@ -1,23 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Single-page dashboard that visualizes how funds enter and leave the team -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finance Flow Tracker</title>
-    <!-- D3 draws the diagrams and the Sankey plugin turns entries into a flow chart -->
+    <title>Finance Flow Tracker - Google Sheets Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js"></script>
-    <!-- Inline stylesheet keeps everything in one file for easier sharing -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
-        /* Reset margins/padding so every browser renders the layout the same */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
-        /* Purple gradient background plus friendly system fonts */
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(180deg, #4739a6 0%, #d483f8 100%);
@@ -25,7 +21,6 @@
             padding: 20px;
         }
 
-        /* White card that holds everything in the center of the page */
         .container {
             max-width: 1400px;
             margin: 0 auto;
@@ -35,11 +30,13 @@
             overflow: hidden;
         }
 
-        /* Gradient title bar with the project name */
         header {
             background: linear-gradient(180deg, #4739a6 0%, #d483f8 100%);
             color: white;
             padding: 30px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         h1 {
@@ -53,7 +50,36 @@
             font-size: 16px;
         }
 
-        /* Toolbar that houses the main action buttons and filters */
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+
+        .sync-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4CAF50;
+        }
+
+        .sync-indicator.disconnected {
+            background: #f44336;
+        }
+
+        .sync-indicator.syncing {
+            background: #FFC107;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
         .controls {
             padding: 30px 40px;
             background: #f8f9fa;
@@ -64,7 +90,6 @@
             align-items: center;
         }
 
-        /* Base style for every button */
         button {
             padding: 12px 24px;
             border: none;
@@ -86,6 +111,12 @@
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
 
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .btn-secondary {
             background: white;
             color: #333;
@@ -103,19 +134,16 @@
             border-color: #7E5FCF;
         }
 
-        /* Right-aligned set of time-range filters */
         .filter-group {
             display: flex;
             gap: 10px;
             margin-left: auto;
         }
 
-        /* Padding around the dashboard content */
         .main-content {
             padding: 40px;
         }
 
-        /* Container for the flow diagram */
         .sankey-container {
             background: white;
             border-radius: 12px;
@@ -129,7 +157,6 @@
             height: 500px;
         }
 
-        /* Collapsible table of every entry */
         .entries-section {
             margin-top: 40px;
         }
@@ -141,7 +168,6 @@
             color: #333;
         }
 
-        /* Table shell for the history list */
         .entries-table {
             width: 100%;
             border-collapse: collapse;
@@ -169,7 +195,6 @@
             background: #f8f9fa;
         }
 
-        /* Groups edit/delete buttons nicely */
         .entry-actions {
             display: flex;
             gap: 10px;
@@ -198,7 +223,6 @@
             background: #da190b;
         }
 
-        /* Dark overlay that appears when adding/editing an entry */
         .modal {
             display: none;
             position: fixed;
@@ -216,7 +240,6 @@
             display: flex;
         }
 
-        /* White card inside the overlay */
         .modal-content {
             background: white;
             border-radius: 16px;
@@ -234,7 +257,6 @@
             color: #333;
         }
 
-        /* Stack label/input pairs with spacing */
         .form-group {
             margin-bottom: 20px;
         }
@@ -246,7 +268,6 @@
             color: #555;
         }
 
-        /* Give all fields the same rounded look */
         input, select, textarea {
             width: 100%;
             padding: 12px;
@@ -267,7 +288,6 @@
             min-height: 80px;
         }
 
-        /* Buttons at the bottom of the modal */
         .form-actions {
             display: flex;
             gap: 10px;
@@ -278,7 +298,6 @@
             flex: 1;
         }
 
-        /* Friendly message whenever there is no data to show */
         .empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -290,7 +309,6 @@
             margin-bottom: 20px;
         }
 
-        /* Three quick stat cards (income/expense/balance) */
         .summary-cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -329,7 +347,6 @@
             color: #A265DA;
         }
 
-        /* Tiny pill used to color-code the type column */
         .badge {
             display: inline-block;
             padding: 4px 12px;
@@ -338,34 +355,87 @@
             font-weight: 600;
         }
 
-        /* Green badge for money coming in */
         .badge-income {
             background: #e8f5e9;
             color: #2e7d32;
         }
 
-        /* Red badge for money going out */
         .badge-expense {
             background: #ffebee;
             color: #c62828;
         }
+
+        .setup-modal {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+        }
+
+        .setup-step {
+            margin-bottom: 30px;
+        }
+
+        .setup-step h3 {
+            color: #7E5FCF;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .setup-step p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .setup-step code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .setup-step ol {
+            margin-left: 20px;
+            color: #666;
+            line-height: 1.8;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+
+        .info-box p {
+            color: #1976D2;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
-    <!-- Card-style shell that keeps the finance tools centered on the page -->
     <div class="container">
-        <!-- Simple hero header so people instantly know what this page does -->
         <header>
-            <h1>Orion Racing Finance Tracker</h1>
+            <div>
+                <h1>Orion Racing Finance Tracker</h1>
+                <div class="subtitle">Synced with Google Sheets</div>
+            </div>
+            <div class="sync-status">
+                <div class="sync-indicator" id="syncIndicator"></div>
+                <span id="syncStatus">Disconnected</span>
+            </div>
         </header>
 
-        <!-- Action bar with add button, table toggle, and time filters -->
         <div class="controls">
-            <button class="btn-primary" onclick="openAddModal()">Add Entry</button>
+            <button class="btn-primary" id="connectBtn" onclick="handleAuthClick()">Connect Google Sheets</button>
+            <button class="btn-primary" id="addEntryBtn" onclick="openAddModal()" disabled>Add Entry</button>
             <button class="btn-secondary" onclick="toggleEntriesView()">View All Entries</button>
             
             <div class="filter-group">
-                <!-- Each filter button updates the timeframe used everywhere else -->
                 <button class="btn-secondary active" onclick="setFilter('month')">This Month</button>
                 <button class="btn-secondary" onclick="setFilter('3months')">Last 3 Months</button>
                 <button class="btn-secondary" onclick="setFilter('6months')">Last 6 Months</button>
@@ -374,7 +444,6 @@
         </div>
 
         <div class="main-content">
-            <!-- Quick stats so someone can see the big picture at a glance -->
             <div class="summary-cards">
                 <div class="summary-card income">
                     <div class="summary-card-title">Total Income</div>
@@ -390,12 +459,10 @@
                 </div>
             </div>
 
-            <!-- Placeholder for the Sankey diagram (money flow visualization) -->
             <div class="sankey-container">
                 <div id="sankey"></div>
             </div>
 
-            <!-- Hidden by default; reveals a sortable table of every entry -->
             <div class="entries-section" id="entriesSection" style="display: none;">
                 <h2 class="section-title">All Entries</h2>
                 <div id="entriesTableContainer"></div>
@@ -403,14 +470,12 @@
         </div>
     </div>
 
-    <!-- Reusable modal for adding OR editing entries -->
     <div class="modal" id="entryModal">
         <div class="modal-content">
             <h2 class="modal-title" id="modalTitle">Add Entry</h2>
             <form id="entryForm" onsubmit="saveEntry(event)">
                 <input type="hidden" id="entryId">
                 
-                <!-- Required basics so we know what kind of money movement this is -->
                 <div class="form-group">
                     <label>Type *</label>
                     <select id="entryType" required>
@@ -419,19 +484,16 @@
                     </select>
                 </div>
 
-                <!-- Free text buckets so teams can name their own categories -->
                 <div class="form-group">
                     <label>Category *</label>
                     <input type="text" id="entryCategory" required placeholder="e.g., Salary, Rent, Food">
                 </div>
 
-                <!-- Optional extra level if teams want to split categories even more -->
                 <div class="form-group">
                     <label>Subcategory</label>
                     <input type="text" id="entrySubcategory" placeholder="Optional">
                 </div>
 
-                <!-- Amount and timing help the summaries stay accurate -->
                 <div class="form-group">
                     <label>Amount ($) *</label>
                     <input type="number" id="entryAmount" step="0.01" required placeholder="0.00">
@@ -442,7 +504,6 @@
                     <input type="date" id="entryDate" required>
                 </div>
 
-                <!-- Optional description if the amount needs extra context later -->
                 <div class="form-group">
                     <label>Notes</label>
                     <textarea id="entryNotes" placeholder="Optional notes"></textarea>
@@ -456,38 +517,245 @@
         </div>
     </div>
 
-    <script>
-        // In-memory list of every income/expense item (also synced to localStorage)
-        let entries = [];
-        // Determines which time range drives the stats and Sankey chart
-        let currentFilter = 'month';
-        // When editing an existing row we keep its id here
-        let editingId = null;
+    <div class="modal active" id="setupModal">
+        <div class="setup-modal">
+            <h2 class="modal-title">Setup Google Sheets Integration</h2>
+            
+            <div class="setup-step">
+                <h3>Step 1: Create Google Cloud Project</h3>
+                <ol>
+                    <li>Go to <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a></li>
+                    <li>Create a new project or select an existing one</li>
+                    <li>Enable the <strong>Google Sheets API</strong></li>
+                </ol>
+            </div>
 
-        // Initialize the app once the HTML nodes exist
+            <div class="setup-step">
+                <h3>Step 2: Create OAuth Credentials</h3>
+                <ol>
+                    <li>Go to "APIs & Services" → "Credentials"</li>
+                    <li>Click "Create Credentials" → "OAuth client ID"</li>
+                    <li>Select "Web application"</li>
+                    <li>Add authorized JavaScript origins (your website URL)</li>
+                    <li>Copy your <strong>Client ID</strong></li>
+                </ol>
+            </div>
+
+            <div class="setup-step">
+                <h3>Step 3: Configure This App</h3>
+                <p>Paste your Client ID below:</p>
+                <input type="text" id="clientIdInput" placeholder="YOUR_CLIENT_ID.apps.googleusercontent.com" style="margin-bottom: 15px;">
+                
+                <p>Enter your Google Sheet ID (from the URL):</p>
+                <input type="text" id="sheetIdInput" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms">
+                
+                <div class="info-box">
+                    <p><strong>Note:</strong> The Sheet ID is the long string in your Google Sheets URL between /d/ and /edit</p>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button class="btn-primary" onclick="saveSetup()">Save & Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let entries = [];
+        let currentFilter = 'month';
+        let editingId = null;
+        let tokenClient;
+        let accessToken = null;
+        let CLIENT_ID = '';
+        let SHEET_ID = '';
+        const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+        function saveSetup() {
+            CLIENT_ID = document.getElementById('clientIdInput').value.trim();
+            SHEET_ID = document.getElementById('sheetIdInput').value.trim();
+            
+            if (!CLIENT_ID || !SHEET_ID) {
+                alert('Please enter both Client ID and Sheet ID');
+                return;
+            }
+            
+            localStorage.setItem('googleClientId', CLIENT_ID);
+            localStorage.setItem('googleSheetId', SHEET_ID);
+            
+            document.getElementById('setupModal').classList.remove('active');
+            initializeGoogleAuth();
+        }
+
+        function initializeGoogleAuth() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (response) => {
+                    if (response.error !== undefined) {
+                        throw (response);
+                    }
+                    accessToken = response.access_token;
+                    updateSyncStatus('connected');
+                    document.getElementById('addEntryBtn').disabled = false;
+                    document.getElementById('connectBtn').textContent = 'Refresh Connection';
+                    loadFromGoogleSheets();
+                },
+            });
+        }
+
+        function handleAuthClick() {
+            if (!CLIENT_ID || !SHEET_ID) {
+                document.getElementById('setupModal').classList.add('active');
+                return;
+            }
+            
+            if (accessToken === null) {
+                tokenClient.requestAccessToken({prompt: 'consent'});
+            } else {
+                tokenClient.requestAccessToken({prompt: ''});
+            }
+        }
+
+        function updateSyncStatus(status) {
+            const indicator = document.getElementById('syncIndicator');
+            const statusText = document.getElementById('syncStatus');
+            
+            indicator.className = 'sync-indicator';
+            
+            switch(status) {
+                case 'connected':
+                    indicator.classList.add('connected');
+                    statusText.textContent = 'Connected';
+                    break;
+                case 'syncing':
+                    indicator.classList.add('syncing');
+                    statusText.textContent = 'Syncing...';
+                    break;
+                case 'disconnected':
+                    indicator.classList.add('disconnected');
+                    statusText.textContent = 'Disconnected';
+                    break;
+            }
+        }
+
+        async function loadFromGoogleSheets() {
+            if (!accessToken) return;
+            
+            updateSyncStatus('syncing');
+            
+            try {
+                const response = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/A:G`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    }
+                );
+                
+                const data = await response.json();
+                
+                if (data.values && data.values.length > 1) {
+                    entries = data.values.slice(1).map(row => ({
+                        id: row[0] || Date.now().toString(),
+                        type: row[1] || 'expense',
+                        category: row[2] || '',
+                        subcategory: row[3] || '',
+                        amount: parseFloat(row[4]) || 0,
+                        date: row[5] || '',
+                        notes: row[6] || ''
+                    })).filter(e => e.id && e.amount);
+                } else {
+                    await initializeGoogleSheet();
+                }
+                
+                updateSyncStatus('connected');
+                updateDashboard();
+            } catch (error) {
+                console.error('Error loading from Google Sheets:', error);
+                updateSyncStatus('disconnected');
+                alert('Error loading data from Google Sheets. Please check your Sheet ID and permissions.');
+            }
+        }
+
+        async function initializeGoogleSheet() {
+            const headers = [['ID', 'Type', 'Category', 'Subcategory', 'Amount', 'Date', 'Notes']];
+            
+            await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/A1:G1?valueInputOption=RAW`,
+                {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        values: headers
+                    })
+                }
+            );
+        }
+
+        async function saveToGoogleSheets() {
+            if (!accessToken) return;
+            
+            updateSyncStatus('syncing');
+            
+            try {
+                const values = [
+                    ['ID', 'Type', 'Category', 'Subcategory', 'Amount', 'Date', 'Notes'],
+                    ...entries.map(e => [
+                        e.id,
+                        e.type,
+                        e.category,
+                        e.subcategory || '',
+                        e.amount,
+                        e.date,
+                        e.notes || ''
+                    ])
+                ];
+                
+                await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/A:G?valueInputOption=RAW`,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            values: values
+                        })
+                    }
+                );
+                
+                updateSyncStatus('connected');
+            } catch (error) {
+                console.error('Error saving to Google Sheets:', error);
+                updateSyncStatus('disconnected');
+                alert('Error saving to Google Sheets. Please reconnect.');
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('App loaded!');
-            loadEntries();
-            console.log('Entries loaded:', entries.length);
+            CLIENT_ID = localStorage.getItem('googleClientId') || '';
+            SHEET_ID = localStorage.getItem('googleSheetId') || '';
+            
+            if (CLIENT_ID && SHEET_ID) {
+                document.getElementById('setupModal').classList.remove('active');
+                document.getElementById('clientIdInput').value = CLIENT_ID;
+                document.getElementById('sheetIdInput').value = SHEET_ID;
+            }
+            
             document.getElementById('entryDate').valueAsDate = new Date();
             updateDashboard();
         });
 
-        // Pull saved data out of the browser's localStorage (if available)
-        function loadEntries() {
-            const stored = localStorage.getItem('financeEntries');
-            if (stored) {
-                entries = JSON.parse(stored);
-            }
-        }
-
-        // Persist the latest entries list so refreshing the page keeps your data
-        function saveEntries() {
-            localStorage.setItem('financeEntries', JSON.stringify(entries));
-        }
-
-        // Show a blank form so the user can add a new record
         function openAddModal() {
+            if (!accessToken) {
+                alert('Please connect to Google Sheets first');
+                return;
+            }
             editingId = null;
             document.getElementById('modalTitle').textContent = 'Add Entry';
             document.getElementById('entryForm').reset();
@@ -495,7 +763,6 @@
             document.getElementById('entryModal').classList.add('active');
         }
 
-        // Load the existing values into the modal so they can be tweaked
         function openEditModal(id) {
             editingId = id;
             const entry = entries.find(e => e.id === id);
@@ -511,18 +778,15 @@
             document.getElementById('entryModal').classList.add('active');
         }
 
-        // Hides the modal and clears any stale data
         function closeModal() {
             document.getElementById('entryModal').classList.remove('active');
             document.getElementById('entryForm').reset();
             editingId = null;
         }
 
-        // Handles both the add and edit flows depending on editingId
-        function saveEntry(event) {
+        async function saveEntry(event) {
             event.preventDefault();
 
-            // Grab whatever the user typed into the form fields
             const entry = {
                 id: editingId || Date.now().toString(),
                 type: document.getElementById('entryType').value,
@@ -534,39 +798,33 @@
             };
 
             if (editingId) {
-                // Replace the existing entry in place
                 const index = entries.findIndex(e => e.id === editingId);
                 entries[index] = entry;
             } else {
-                // Otherwise append a fresh entry to the list
                 entries.push(entry);
             }
 
-            saveEntries();
+            await saveToGoogleSheets();
             closeModal();
             updateDashboard();
         }
 
-        // Simple confirmation before removing a row forever
-        function deleteEntry(id) {
+        async function deleteEntry(id) {
             if (!confirm('Are you sure you want to delete this entry?')) return;
             entries = entries.filter(e => e.id !== id);
-            saveEntries();
+            await saveToGoogleSheets();
             updateDashboard();
         }
 
-        // Update the active time window buttons and refresh the data
         function setFilter(filter) {
             currentFilter = filter;
             document.querySelectorAll('.filter-group button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            // The browser gives us the click event, so we can light up the button that was tapped
             event.target.classList.add('active');
             updateDashboard();
         }
 
-        // Returns entries that fall inside the currently selected time range
         function getFilteredEntries() {
             const today = new Date();
             const startDates = {
@@ -580,7 +838,6 @@
             return entries.filter(e => new Date(e.date) >= startDate);
         }
 
-        // Recalculates every widget (stats, chart, table) in one go
         function updateDashboard() {
             const filtered = getFilteredEntries();
             updateSummary(filtered);
@@ -590,7 +847,6 @@
             }
         }
 
-        // Totals for the three KPI cards at the top
         function updateSummary(filtered) {
             const income = filtered.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
             const expense = filtered.filter(e => e.type === 'expense').reduce((sum, e) => sum + e.amount, 0);
@@ -601,13 +857,11 @@
             document.getElementById('netBalance').textContent = '$' + balance.toFixed(2);
         }
 
-        // Builds the money flow diagram using D3's Sankey layout
         function updateSankey(filtered) {
             const container = document.getElementById('sankey');
             container.innerHTML = '';
 
             if (filtered.length === 0) {
-                // Don't try to draw a chart with no data; show a nudge instead
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">📊</div>
@@ -618,12 +872,10 @@
                 return;
             }
 
-            // Prepare data for Sankey: nodes are buckets, links describe how money moves between them
             const nodes = [];
             const links = [];
             const nodeMap = new Map();
 
-            // Returns an index for each unique name; creates nodes on the fly
             function getNodeIndex(name) {
                 if (!nodeMap.has(name)) {
                     nodeMap.set(name, nodes.length);
@@ -632,12 +884,10 @@
                 return nodeMap.get(name);
             }
 
-            // Add Income aggregate node
             const incomeIdx = getNodeIndex('Income');
-
-            // Process income entries
-            const incomeByCategory = {}; // Totals for category nodes
-            const incomeSubcategories = {}; // Totals for the optional subcategory nodes
+            const incomeByCategory = {};
+            const incomeSubcategories = {};
+            
             filtered.filter(e => e.type === 'income').forEach(e => {
                 const category = (e.category && e.category.trim()) || 'Other Income';
                 incomeByCategory[category] = (incomeByCategory[category] || 0) + e.amount;
@@ -665,9 +915,9 @@
                 });
             });
 
-            // Process expense entries
-            const expenseByCategory = {}; // Totals for money leaving each category
-            const expenseSubcategories = {}; // More granular breakdowns when provided
+            const expenseByCategory = {};
+            const expenseSubcategories = {};
+            
             filtered.filter(e => e.type === 'expense').forEach(e => {
                 const sourceCategory = (e.category && e.category.trim()) || 'Other Expenses';
                 expenseByCategory[sourceCategory] = (expenseByCategory[sourceCategory] || 0) + e.amount;
@@ -681,7 +931,6 @@
                 }
             });
 
-            // Link Income aggregate to each expense category
             Object.entries(expenseByCategory).forEach(([category, amount]) => {
                 if (amount <= 0) return;
                 const catIdx = getNodeIndex(category);
@@ -697,7 +946,6 @@
                 });
             });
 
-            // Create Sankey diagram
             const width = container.clientWidth;
             const height = 500;
 
@@ -716,15 +964,12 @@
                 links: links.map(d => Object.assign({}, d))
             });
 
-            // Color palette for categories
             const categoryColors = {
                 'Income': '#4CAF50',
                 'Salary': '#66BB6A',
                 'Freelance': '#81C784',
                 'Investment': '#A5D6A7',
                 'Other Income': '#C8E6C9',
-                
-                // Expense categories - using your Orion Racing palette
                 'Other Expenses': '#8B5CF6',
                 'Rent': '#7E5FCF',
                 'Food': '#4739A6',
@@ -743,19 +988,16 @@
                 'Gifts': '#A265DA'
             };
 
-            // Assign colors to nodes
             const nodeColors = new Map();
             sankeyNodes.forEach((node, i) => {
                 if (categoryColors[node.name]) {
                     nodeColors.set(node.name, categoryColors[node.name]);
                 } else {
-                    // Generate color from palette for unknown categories
                     const palette = ['#7E5FCF', '#4739A6', '#5758C5', '#8665DD', '#A265DA', '#CC95FF', '#47009c', '#6300b9', '#7f00d6', '#9c2af0', '#b666f9'];
                     nodeColors.set(node.name, palette[i % palette.length]);
                 }
             });
 
-            // Add links with gradient colors
             const defs = svg.append('defs');
             
             sankeyLinks.forEach((link, i) => {
@@ -775,7 +1017,6 @@
                     .attr('stop-color', nodeColors.get(link.target.name) || '#667eea');
             });
 
-            // Add links
             svg.append('g')
                 .selectAll('path')
                 .data(sankeyLinks)
@@ -786,7 +1027,6 @@
                 .attr('fill', 'none')
                 .attr('opacity', 0.6);
 
-            // Add nodes
             svg.append('g')
                 .selectAll('rect')
                 .data(sankeyNodes)
@@ -800,7 +1040,6 @@
                 .attr('stroke', '#fff')
                 .attr('stroke-width', 1);
 
-            // Add labels
             svg.append('g')
                 .selectAll('text')
                 .data(sankeyNodes)
@@ -809,12 +1048,11 @@
                 .attr('y', d => (d.y1 + d.y0) / 2)
                 .attr('dy', '0.35em')
                 .attr('text-anchor', d => d.x0 < width / 2 ? 'start' : 'end')
-                .text(d => `${d.name} ($${d.value.toFixed(0)})`)
+                .text(d => `${d.name} (${d.value.toFixed(0)})`)
                 .style('font-size', '12px')
                 .style('font-weight', '600');
         }
 
-        // Show/hide the history table without leaving the page
         function toggleEntriesView() {
             const section = document.getElementById('entriesSection');
             if (section.style.display === 'none') {
@@ -825,7 +1063,6 @@
             }
         }
 
-        // Builds the HTML table by hand so it matches the current entries array
         function updateEntriesTable() {
             const container = document.getElementById('entriesTableContainer');
             
@@ -842,7 +1079,6 @@
 
             const sorted = [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-            // Template literal keeps the markup readable even though we're in JS
             const table = `
                 <table class="entries-table">
                     <thead>
@@ -863,7 +1099,7 @@
                                 <td><span class="badge badge-${entry.type}">${entry.type}</span></td>
                                 <td>${entry.category}</td>
                                 <td>${entry.subcategory || '-'}</td>
-                                <td>$${entry.amount.toFixed(2)}</td>
+                                <td>${entry.amount.toFixed(2)}</td>
                                 <td>${entry.notes || '-'}</td>
                                 <td>
                                     <div class="entry-actions">
