@@ -582,10 +582,22 @@
             localStorage.setItem('googleSheetId', SHEET_ID);
             
             document.getElementById('setupModal').classList.remove('active');
-            initializeGoogleAuth();
+            
+            const initialized = initializeGoogleAuth();
+            if (!initialized) {
+                alert('Google authentication is still loading. Please try again in a moment.');
+                return;
+            }
+            
+            handleAuthClick();
         }
 
         function initializeGoogleAuth() {
+            if (!window.google || !google.accounts || !google.accounts.oauth2) {
+                console.warn('Google authentication library is not ready yet.');
+                return false;
+            }
+
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
@@ -600,12 +612,22 @@
                     loadFromGoogleSheets();
                 },
             });
+
+            return true;
         }
 
         function handleAuthClick() {
             if (!CLIENT_ID || !SHEET_ID) {
                 document.getElementById('setupModal').classList.add('active');
                 return;
+            }
+
+            if (!tokenClient) {
+                const initialized = initializeGoogleAuth();
+                if (!initialized) {
+                    alert('Google authentication is still loading. Please try again in a moment.');
+                    return;
+                }
             }
             
             if (accessToken === null) {
