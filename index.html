@@ -1069,7 +1069,7 @@
                 .attr('y', d => (d.y1 + d.y0) / 2)
                 .attr('dy', '0.35em')
                 .attr('text-anchor', d => d.x0 < width / 2 ? 'start' : 'end')
-                .text(d => `${d.name} (${d.value.toFixed(0)})`)
+                .text(d => `${d.name} ($${d.value.toFixed(0)})`)
                 .style('font-size', '12px')
                 .style('font-weight', '600');
         }
