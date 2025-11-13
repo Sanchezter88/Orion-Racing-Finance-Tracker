@@ -57,6 +57,17 @@
             background: rgba(255,255,255,0.2);
             padding: 10px 20px;
             border-radius: 8px;
+                        cursor: pointer;
+            user-select: none;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .sync-status:hover {
+            background: rgba(255,255,255,0.3);
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.2);
+        }
+        .sync-status:focus-visible {
+            outline: 2px solid rgba(255,255,255,0.8);
+            outline-offset: 2px;
         }
 
         .sync-indicator {
@@ -423,7 +434,7 @@
             <div>
                 <h1>Orion Racing Finance Tracker</h1>
             </div>
-            <div class="sync-status">
+            <div class="sync-status" id="syncStatusControl" role="button" tabindex="0" title="Click to connect or refresh Google Sheets">
                 <div class="sync-indicator" id="syncIndicator"></div>
                 <span id="syncStatus">Disconnected</span>
             </div>
@@ -568,7 +579,17 @@
         let CLIENT_ID = '';
         let SHEET_ID = '';
         const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
-
+        const statusControl = document.getElementById('syncStatusControl');
+        if (statusControl) {
+            statusControl.addEventListener('click', () => handleAuthClick());
+            statusControl.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleAuthClick();
+                }
+            });
+        }
+        
         function saveSetup() {
             CLIENT_ID = document.getElementById('clientIdInput').value.trim();
             SHEET_ID = document.getElementById('sheetIdInput').value.trim();
@@ -608,7 +629,6 @@
                     accessToken = response.access_token;
                     updateSyncStatus('connected');
                     document.getElementById('addEntryBtn').disabled = false;
-                    document.getElementById('connectBtn').textContent = 'Refresh Connection';
                     loadFromGoogleSheets();
                 },
             });
@@ -637,11 +657,23 @@
             }
         }
 
+        function updateConnectButtonVisibility(status) {
+            const connectBtn = document.getElementById('connectBtn');
+            if (!connectBtn) return;
+            if (status === 'connected' || status === 'syncing') {
+                connectBtn.style.display = 'none';
+            } else {
+                connectBtn.style.display = '';
+                connectBtn.textContent = 'Connect Google Sheets';
+            }
+        }
+        
         function updateSyncStatus(status) {
             const indicator = document.getElementById('syncIndicator');
             const statusText = document.getElementById('syncStatus');
             
             indicator.className = 'sync-indicator';
+            updateConnectButtonVisibility(status);
             
             switch(status) {
                 case 'connected':
