@@ -578,7 +578,17 @@
         let accessToken = null;
         let CLIENT_ID = '';
         let SHEET_ID = '';
+        const DEFAULT_CLIENT_ID = '1069212811125-ktskiarq32ip0qhgmm2v6gihvss4b4q0.apps.googleusercontent.com';
+        const DEFAULT_SHEET_ID = '1RM-v3E3RUIbrh-Clwg6KhsuLtON8ttB8scjxprWKqqw';
+        const CLIENT_ALIAS = 'orionracing';
+        const SHEET_ALIAS = 'labubu';
         const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+        function resolveSetupValue(inputValue, aliasKeyword, defaultValue) {
+            if (!inputValue) return inputValue;
+            return inputValue.trim().toLowerCase() === aliasKeyword ? defaultValue : inputValue;
+        }
+
         const statusControl = document.getElementById('syncStatusControl');
         if (statusControl) {
             statusControl.addEventListener('click', () => handleAuthClick());
@@ -591,8 +601,14 @@
         }
         
         function saveSetup() {
-            CLIENT_ID = document.getElementById('clientIdInput').value.trim();
-            SHEET_ID = document.getElementById('sheetIdInput').value.trim();
+            const clientInput = document.getElementById('clientIdInput');
+            const sheetInput = document.getElementById('sheetIdInput');
+
+            CLIENT_ID = resolveSetupValue(clientInput.value, CLIENT_ALIAS, DEFAULT_CLIENT_ID).trim();
+            SHEET_ID = resolveSetupValue(sheetInput.value, SHEET_ALIAS, DEFAULT_SHEET_ID).trim();
+
+            clientInput.value = CLIENT_ID;
+            sheetInput.value = SHEET_ID;
             
             if (!CLIENT_ID || !SHEET_ID) {
                 alert('Please enter both Client ID and Sheet ID');
